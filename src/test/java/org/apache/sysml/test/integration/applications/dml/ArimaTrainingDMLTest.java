@@ -19,17 +19,17 @@
 
 package org.apache.sysml.test.integration.applications.dml;
 
+import org.apache.sysml.test.integration.applications.ArimaTrainingTest;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.apache.sysml.test.integration.applications.ArimaTest;
 
 @RunWith(value = Parameterized.class)
-public class ArimaDMLTest extends ArimaTest {
+public class ArimaTrainingDMLTest extends ArimaTrainingTest {
 
-	public ArimaDMLTest(int m, int p, int d, int q, int P, int D, int Q, int s, int include_mean, int useJacobi) {
-		super(m, p, d, q, P, D, Q, s, include_mean, useJacobi);
-		TEST_CLASS_DIR = TEST_DIR + ArimaDMLTest.class.getSimpleName() + "/";
+	public ArimaTrainingDMLTest(int p, int d, int q, int P, int D, int Q, int s) {
+		super(p, d, q, P, D, Q, s);
+		TEST_CLASS_DIR = TEST_DIR + ArimaTrainingDMLTest.class.getSimpleName() + "/";
 	}
 
 	@Test

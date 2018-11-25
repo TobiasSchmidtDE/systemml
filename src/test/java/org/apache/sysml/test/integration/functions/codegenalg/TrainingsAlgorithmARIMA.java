@@ -19,17 +19,15 @@
 
 package org.apache.sysml.test.integration.functions.codegenalg;
 
+import java.io.File;
+
+import org.apache.sysml.test.integration.applications.ArimaTrainingTest;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import java.io.File;
-
-import org.apache.sysml.test.integration.applications.ArimaTest;
-
 @RunWith(value = Parameterized.class)
-public class AlgorithmARIMA extends ArimaTest 
-{
+public class TrainingsAlgorithmARIMA extends ArimaTrainingTest {
 	private final static String LOCAL_TEST_DIR = "functions/codegenalg/";
 	private final static String TEST_CONF_DEFAULT = "SystemML-config-codegen.xml";
 	private final static File TEST_CONF_FILE_DEFAULT = new File(SCRIPT_DIR + LOCAL_TEST_DIR, TEST_CONF_DEFAULT);
@@ -39,12 +37,15 @@ public class AlgorithmARIMA extends ArimaTest
 	private final static File TEST_CONF_FILE_FUSE_NO_REDUNDANCY = new File(SCRIPT_DIR + LOCAL_TEST_DIR,
 			TEST_CONF_FUSE_NO_REDUNDANCY);
 
-	private enum TestType { DEFAULT,FUSE_ALL,FUSE_NO_REDUNDANCY }
+	private enum TestType {
+		DEFAULT, FUSE_ALL, FUSE_NO_REDUNDANCY
+	}
+
 	private TestType currentTestType = TestType.DEFAULT;
 
-	public AlgorithmARIMA(int m, int p, int d, int q, int P, int D, int Q, int s, int include_mean, int useJacobi) {
-		super(m, p, d, q, P, D, Q, s, include_mean, useJacobi);
-		TEST_CLASS_DIR = TEST_DIR + AlgorithmARIMA.class.getSimpleName() + "/";
+	public TrainingsAlgorithmARIMA(int p, int d, int q, int P, int D, int Q, int s) {
+		super(p, d, q, P, D, Q, s);
+		TEST_CLASS_DIR = TEST_DIR + TrainingsAlgorithmARIMA.class.getSimpleName() + "/";
 	}
 
 	@Test
@@ -62,18 +63,18 @@ public class AlgorithmARIMA extends ArimaTest
 		testArima(ScriptType.DML, TestType.FUSE_NO_REDUNDANCY);
 	}
 
-	private void testArima(ScriptType scriptType, TestType testType){
+	private void testArima(ScriptType scriptType, TestType testType) {
 		currentTestType = testType;
 		testArima(ScriptType.DML);
 	}
-	
+
 	@Override
 	protected File getConfigTemplateFile() {
 		String message = "This test case overrides default configuration with ";
-		if(currentTestType == TestType.FUSE_ALL){
+		if (currentTestType == TestType.FUSE_ALL) {
 			System.out.println(message + TEST_CONF_FILE_FUSE_ALL.getPath());
 			return TEST_CONF_FILE_FUSE_ALL;
-		} else if(currentTestType == TestType.FUSE_NO_REDUNDANCY){
+		} else if (currentTestType == TestType.FUSE_NO_REDUNDANCY) {
 			System.out.println(message + TEST_CONF_FILE_FUSE_NO_REDUNDANCY.getPath());
 			return TEST_CONF_FILE_FUSE_NO_REDUNDANCY;
 		} else {
