@@ -19,15 +19,27 @@
 #
 #-------------------------------------------------------------
 
-F1 = read($DATA, data_type="frame", format="csv");
-jspec = read($TFSPEC, data_type="scalar", value_type="string");
+# test pbinomial and cdf to be same with lower tail TRUE
+p   = pbinomial (target=$2, trials=20, p=0.25)
+p1  = pbinomial (target=$2, trials=20, p=0.25, lower.tail=TRUE)
+pc  = cdf       (target=$2, trials=20, p=0.25, dist="binomial")
+pc1 = cdf       (target=$2, trials=20, p=0.25, dist="binomial", lower.tail=TRUE)
 
-[X, M] = transformencode(target=F1, spec=jspec);
+if ((p != p1) | (p != pc) | (p != pc1)) { p = NaN }
 
-while(FALSE){}
+# test pbinomial and cdf be same with low tail FALSE
+pl  = pbinomial (target=$2, trials=20, p=0.25, lower.tail=FALSE)
+pcl = cdf       (target=$2, trials=20, p=0.25, lower.tail=FALSE, dist="binomial")
 
-X2 = transformapply(target=F1, spec=jspec, meta=M);
+if (pl != pcl) { pl = NaN }
 
-write(X, $TFDATA1, format=$OFMT);
-write(X2, $TFDATA2, format=$OFMT);
+# test qbinomial and icdf to be same
+q  = qbinomial (target=$1, trials=20, p=0.25)
+qc = icdf      (target=$1, trials=20, p=0.25, dist="binomial")
 
+if (q != qc) { q = NaN }    
+
+# produce pbinomial with lower TRUE/FALSE and qbinomial as output
+res = rbind(as.matrix(p), as.matrix(pl), as.matrix(q))
+
+write(res, $3)

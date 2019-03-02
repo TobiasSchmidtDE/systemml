@@ -31,8 +31,20 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.runtime.DMLRuntimeException;
+import org.apache.sysml.runtime.compress.CompressedMatrixBlock;
+import org.apache.sysml.runtime.controlprogram.caching.MatrixObject.UpdateType;
+import org.apache.sysml.runtime.functionobjects.Builtin;
 import org.apache.sysml.runtime.functionobjects.KahanPlus;
+import org.apache.sysml.runtime.functionobjects.Multiply;
+import org.apache.sysml.runtime.functionobjects.Plus;
+import org.apache.sysml.runtime.functionobjects.PlusMultiply;
+import org.apache.sysml.runtime.functionobjects.Builtin.BuiltinCode;
 import org.apache.sysml.runtime.instructions.cp.KahanObject;
+import org.apache.sysml.runtime.matrix.operators.AggregateBinaryOperator;
+import org.apache.sysml.runtime.matrix.operators.AggregateOperator;
+import org.apache.sysml.runtime.matrix.operators.BinaryOperator;
+import org.apache.sysml.runtime.matrix.operators.TernaryOperator;
+import org.apache.sysml.runtime.matrix.operators.UnaryOperator;
 import org.apache.sysml.runtime.util.CommonThreadPool;
 import org.apache.sysml.runtime.util.DnnUtils;
 
@@ -260,6 +272,104 @@ public class LibMatrixDNN {
 		//post-processing: maintain nnz 
 		outputBlock.setNonZeros(nnz);
 		outputBlock.examSparsity();
+	}
+	
+	private static MatrixBlock matmult(MatrixBlock matBlock1, MatrixBlock matBlock2, int numThreads) {
+		AggregateBinaryOperator ab_op = new AggregateBinaryOperator(Multiply.getMultiplyFnObject(), 
+				new AggregateOperator(0, Plus.getPlusFnObject()), numThreads);
+		MatrixBlock main = (matBlock2 instanceof CompressedMatrixBlock) ? matBlock2 : matBlock1;
+		MatrixBlock ret = main.aggregateBinaryOperations(matBlock1, matBlock2, new MatrixBlock(), ab_op);
+		return ret;
+	}
+	
+	private static MatrixBlock add(MatrixBlock matBlock1, MatrixBlock matBlock2, boolean inplace) {
+		BinaryOperator bop = new BinaryOperator(Plus.getPlusFnObject());
+//		if(inplace) {
+//			matBlock1.binaryOperationsInPlace(bop, matBlock2);
+//			return matBlock1;
+//		}
+//		else {
+			return (MatrixBlock) matBlock1.binaryOperations(bop, matBlock2, new MatrixBlock());
+//		}
+	}
+	
+	private static MatrixBlock multiply(MatrixBlock matBlock1, MatrixBlock matBlock2, boolean inplace) {
+		BinaryOperator bop = new BinaryOperator(Multiply.getMultiplyFnObject());
+//		if(inplace) {
+//			matBlock1.binaryOperationsInPlace(bop, matBlock2);
+//			return matBlock1;
+//		}
+//		else {
+			return (MatrixBlock) matBlock1.binaryOperations(bop, matBlock2, new MatrixBlock());
+//		}
+	}
+	
+	// sigmoid(0)*c_prev + sigmoid(0)*tanh(0);
+	
+	private static Builtin sigmoidOp = Builtin.getBuiltinFnObject(BuiltinCode.SIGMOID);
+	private static Builtin tanhOp = Builtin.getBuiltinFnObject(BuiltinCode.TANH);
+	private static MatrixBlock sigmoid(MatrixBlock in, int numThreads, boolean inPlace) {
+		return (MatrixBlock) in.unaryOperations(new UnaryOperator(sigmoidOp, numThreads, inPlace), new MatrixBlock());
+	}
+	
+	private static MatrixBlock tanh(MatrixBlock in, int numThreads, boolean inPlace) {
+		return (MatrixBlock) in.unaryOperations(new UnaryOperator(tanhOp, numThreads, inPlace), new MatrixBlock());
+	}
+	
+	private static MatrixBlock plusMultiply(MatrixBlock matBlock1, MatrixBlock matBlock2, MatrixBlock matBlock3) {
+		return matBlock1.ternaryOperations(new TernaryOperator(PlusMultiply.getFnObject()), 
+				matBlock2, matBlock3, new MatrixBlock());
+	}
+	
+	public static void lstm(MatrixBlock X, MatrixBlock W, MatrixBlock b, MatrixBlock out0, MatrixBlock c0, 
+			boolean return_seq, int N, int T, int D, int M,
+			MatrixBlock out, MatrixBlock c, // output 
+			MatrixBlock cache_out, MatrixBlock cache_c, MatrixBlock cache_ifog, // if null, the cache values are not computed
+			int numThreads) {
+		MatrixBlock out_prev = out0;
+		MatrixBlock c_prev = c0;
+		
+		MatrixBlock W1 = W.slice(0, D-1);
+		MatrixBlock W2 = W.slice(D, D+M-1);
+		MatrixBlock c_t = null;
+		MatrixBlock out_t = null;
+		for(int t = 1; t <= T; t++) {
+			MatrixBlock X_t = X.slice(0, N-1, (t-1)*D, t*D-1, new MatrixBlock());
+			MatrixBlock ifog_raw = add(add(matmult(X_t, W1, numThreads), matmult(out_prev, W2, numThreads), true), b, true);
+			
+			MatrixBlock ifo = ifog_raw.slice(0, N-1, 0, 3*M-1, new MatrixBlock());
+			ifo = sigmoid(ifo, numThreads, true);
+			MatrixBlock i = ifo.slice(0, N-1, 0, M-1, new MatrixBlock());
+			MatrixBlock f = ifo.slice(0, N-1, M, 2*M-1, new MatrixBlock());
+			MatrixBlock o = ifo.slice(0, N-1, 2*M, 3*M-1, new MatrixBlock());
+			
+			MatrixBlock g = ifog_raw.slice(0, N-1, 3*M, 4*M-1, new MatrixBlock());
+			g = tanh(g, numThreads, true);
+			
+			// c_t = f*c_prev + i*g
+			c_t = plusMultiply(multiply(f, c_prev, true), i, g);
+			
+			// out_t = o*tanh(c)
+			out_t = multiply(o, tanh(c_t, numThreads, false), true);
+			
+			if(return_seq) {
+				out = out.leftIndexingOperations(out_t, 0, N-1, (t-1)*M, t*M-1, new MatrixBlock(), UpdateType.INPLACE);
+			}
+			out_prev = out_t;
+			c_prev = c_t;
+			
+			// TODO: Add this when implementing lstm_backward
+//			cache_out[t,] = matrix(out_t, rows=1, cols=N*M)  # reshape
+//		    cache_c[t,] = matrix(c, rows=1, cols=N*M)  # reshape
+//		    cache_ifog[t,] = matrix(cbind(ifo, g), rows=1, cols=N*4*M)  # reshape
+		}
+		if(out_t != null && !return_seq)
+			out.copy(out_t);
+		if(c_t != null)
+			c.copy(c_t);
+		else
+			c.copy(c0);
+		
 	}
 	
 	/**
@@ -573,6 +683,9 @@ public class LibMatrixDNN {
 			double [] inputArr = input.getDenseBlockValues();
 			if(inputArr != null) {
 				System.arraycopy(inputArr, 0, output, 0, inputArr.length);
+			}
+			else {
+				Arrays.fill(output, 0);
 			}
 		}
 	}
