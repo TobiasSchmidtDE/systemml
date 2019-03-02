@@ -103,7 +103,7 @@ public class DnnCPInstruction extends UnaryCPInstruction {
 	public DnnCPInstruction(CPOperand in1, CPOperand in2, CPOperand in3, CPOperand in4, CPOperand in5,
 			CPOperand in6, CPOperand in7, CPOperand in8,
 			CPOperand out, CPOperand out2, CPOperand out3, CPOperand out4, CPOperand out5, String opcode, String istr, 
-			double intermediateMemoryBudget) throws DMLRuntimeException {
+			double intermediateMemoryBudget, int numThreads) throws DMLRuntimeException {
 		super(CPType.Dnn, null, in1, out, opcode, istr);
 		_in2 = in2;
 		_in3 = in3;
@@ -120,7 +120,7 @@ public class DnnCPInstruction extends UnaryCPInstruction {
 		_padding = null;
 		_input_shape = null;
 		_filter_shape = null;
-		_numThreads = 0;
+		_numThreads = numThreads;
 		_intermediateMemoryBudget = intermediateMemoryBudget;
 	}
 
@@ -246,7 +246,7 @@ public class DnnCPInstruction extends UnaryCPInstruction {
 			CPOperand out3 = new CPOperand(parts[11]); // retRunningVar
 			CPOperand out4 = new CPOperand(parts[12]); // resultSaveMean
 			CPOperand out5 = new CPOperand(parts[13]); // resultSaveInvVariance
-			return new DnnCPInstruction(in1, in2, in3, in4, in5, in6, in7, in8, out, out2, out3, out4, out5, opcode, str, 0);
+			return new DnnCPInstruction(in1, in2, in3, in4, in5, in6, in7, in8, out, out2, out3, out4, out5, opcode, str, 0, 0);
 		}
 		else if (opcode.equalsIgnoreCase("batch_norm2d_backward")) {
 			InstructionUtils.checkNumFields(parts, 9);
@@ -259,7 +259,20 @@ public class DnnCPInstruction extends UnaryCPInstruction {
 			CPOperand out = new CPOperand(parts[7]);  // dX
 			CPOperand out2 = new CPOperand(parts[8]); // dScale
 			CPOperand out3 = new CPOperand(parts[9]); // dBias
-			return new DnnCPInstruction(in1, in2, in3, in4, in5, in6, null, null, out, out2, out3, null, null, opcode, str, 0);
+			return new DnnCPInstruction(in1, in2, in3, in4, in5, in6, null, null, out, out2, out3, null, null, opcode, str, 0, 0);
+		}
+		else if (opcode.equalsIgnoreCase("lstm")) {
+			InstructionUtils.checkNumFields(parts, 9);
+			CPOperand in1 = new CPOperand(parts[1]); // X
+			CPOperand in2 = new CPOperand(parts[2]); // W
+			CPOperand in3 = new CPOperand(parts[3]); // b
+			CPOperand in4 = new CPOperand(parts[4]); // out0
+			CPOperand in5 = new CPOperand(parts[5]); // c0
+			CPOperand in6 = new CPOperand(parts[6]); // return_seq
+			CPOperand out = new CPOperand(parts[7]);  // out
+			CPOperand out2 = new CPOperand(parts[8]); // c
+			int numThreads = Integer.parseInt(parts[9]);
+			return new DnnCPInstruction(in1, in2, in3, in4, in5, in6, null, null, out, out2, null, null, null, opcode, str, 0, numThreads);
 		}
 		else {
 			throw new DMLRuntimeException("Unknown opcode while parsing a DnnCPInstruction: " + str);
@@ -269,6 +282,51 @@ public class DnnCPInstruction extends UnaryCPInstruction {
 	private static int getScalarInput(ExecutionContext ec, ArrayList<CPOperand> aL, int index) {
 		return (int) ec.getScalarInput(aL.get(index).getName(),
 			aL.get(index).getValueType(), aL.get(index).isLiteral()).getLongValue();
+	}
+	
+	public void processLstmInstruction(ExecutionContext ec) {
+		MatrixBlock X = ec.getMatrixInput(input1.getName(), getExtendedOpcode());
+		MatrixBlock W = ec.getMatrixInput(_in2.getName(), getExtendedOpcode());
+		MatrixBlock b = ec.getMatrixInput(_in3.getName(), getExtendedOpcode());
+		MatrixBlock out0 = ec.getMatrixInput(_in4.getName(), getExtendedOpcode());
+		MatrixBlock c0 = ec.getMatrixInput(_in5.getName(), getExtendedOpcode());
+		boolean return_seq = ec.getScalarInput(_in6.getName(), _in6.getValueType(), _in6.isLiteral()).getBooleanValue();
+		
+		int N = X.getNumRows();
+		int TD = X.getNumColumns();
+		int DPlusM = W.getNumRows();
+		int M = W.getNumColumns() / 4;
+		if(b.getNumRows() != 1 || b.getNumColumns() != M*4) {
+			throw new DMLRuntimeException("Incorrect dimensions of bias in lstm instruction. Expected [1, " + (M*4) + "], "
+					+ "but found [" + b.getNumRows() + "," + b.getNumColumns() + "]");
+		}
+		if(out0.getNumRows() != N || out0.getNumColumns() != M) {
+			throw new DMLRuntimeException("Incorrect dimensions of out0 in lstm instruction. Expected [" + N + ", " + M + "], "
+					+ "but found [" + out0.getNumRows() + "," + out0.getNumColumns() + "]");
+		}
+		if(c0.getNumRows() != N || c0.getNumColumns() != M) {
+			throw new DMLRuntimeException("Incorrect dimensions of c0 in lstm instruction. Expected [" + N + ", " + M + "], "
+					+ "but found [" + out0.getNumRows() + "," + out0.getNumColumns() + "]");
+		}
+		int D = DPlusM - M;
+		int T = TD / D;
+		
+		MatrixBlock out = new MatrixBlock(N, return_seq ? (T*M) : M, false);
+		MatrixBlock c = new MatrixBlock(N, M, false);
+		
+		LibMatrixDNN.lstm(X, W, b, out0, c0, 
+				return_seq, N, T, D, M,
+				out,  c, null, null, null,
+				_numThreads);
+		
+		// release inputs/outputs
+		ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
+		ec.releaseMatrixInput(_in2.getName(), getExtendedOpcode());
+		ec.releaseMatrixInput(_in3.getName(), getExtendedOpcode());
+		ec.releaseMatrixInput(_in4.getName(), getExtendedOpcode());
+		ec.releaseMatrixInput(_in5.getName(), getExtendedOpcode());
+		ec.setMatrixOutput(output.getName(), out, getExtendedOpcode());
+		ec.setMatrixOutput(_out2.getName(), c, getExtendedOpcode());
 	}
 	
 	public void processReluBackwardInstruction(ExecutionContext ec) {
@@ -434,6 +492,10 @@ public class DnnCPInstruction extends UnaryCPInstruction {
 		}
 		else if (instOpcode.equalsIgnoreCase("batch_norm2d_backward")) {
 			processBatchNorm2dBackwardInstruction(ec);
+			return;
+		}
+		else if (instOpcode.equalsIgnoreCase("lstm")) {
+			processLstmInstruction(ec);
 			return;
 		}
 		
