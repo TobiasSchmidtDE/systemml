@@ -32,7 +32,7 @@
 # 'solver': must be either 'cg' for conjugate gradients method or 'jacobi' for jacobi method (default "jacobi")
 # 'optim_method': must be either "neldermead" or "bfgs" (default "bfgs")
 # 'dest': file name to store learnt parameters (default "arima-result.csv")
-# 'result_format': the format of the destination file (default "csv")
+# 'result_format': the format of the destination file (default "text")
 
 
 arima_predict = function(Matrix[Double] weights, Matrix[Double] Z, Integer p, Integer P, Integer q, Integer Q, Integer s, String solver) return (Matrix[Double] approximated_solution, Matrix[Double] combined_weights){
@@ -340,7 +340,7 @@ solver = ifdef($solver, "jacobi")
 optim_method = ifdef($optim_method, "bfgs")
 max_func_invoc = ifdef($max_func_invoc, 1000)
 dest = ifdef($dest, "arima-results.csv")
-result_format = ifdef($result_format, "MM")
+result_format = ifdef($result_format, "text")
 
 #non-seasonal order
 p =	ifdef($p, 0)
@@ -410,7 +410,7 @@ for (i in seq(1, Q, 1)){
 }
 print("Coefficients for SARIMA("+p+", "+d+", "+q+")("+P+", "+D+", "+Q+") with seasonality s="+s+":\n" + toString(cbind(colNames[2:p+P+q+Q+1, ], as.frame(arima_model)), decimal=15))
 
-write(arima_model, dest)
+write(arima_model, dest, format = result_format)
 
 
 

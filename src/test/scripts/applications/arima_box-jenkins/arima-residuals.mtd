@@ -1,0 +1,10 @@
+{
+    "data_type": "matrix",
+    "value_type": "double",
+    "rows": 1000,
+    "cols": 1,
+    "nnz": 1000,
+    "format": "text",
+    "author": "tobiasschmidt",
+    "created": "2018-11-26 10:54:25 CET"
+}
