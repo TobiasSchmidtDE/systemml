@@ -44,12 +44,12 @@ arima_predict = function(Matrix[Double] weights, Matrix[Double] Z, Integer p, In
 
   multiplicativeWeights = weights
 	if (p>0 & P>0){
-		multiplicativePhi = matrix(Phi %*% t(phi), rows=p*P, cols=1)
+		multiplicativePhi = matrix(phi %*% t(Phi), rows=p*P, cols=1)
 		multiplicativeWeights = rbind(multiplicativeWeights, multiplicativePhi)
 	}
 
 	if (q>0 & Q>0){
-		multiplicativeTheta = matrix(Theta %*% t(theta), rows=q*Q, cols=1)
+		multiplicativeTheta = matrix(theta %*% t(Theta), rows=q*Q, cols=1)
 		multiplicativeWeights = rbind(multiplicativeWeights, multiplicativeTheta)
 	}
 
@@ -80,7 +80,6 @@ arima_predict = function(Matrix[Double] weights, Matrix[Double] Z, Integer p, In
 }
 
 arima_residuals = function(Matrix[Double] weights, Matrix[Double] X, Matrix[Double] Z, Integer p, Integer q, Integer P, Integer Q, Integer s, Integer ncond, String solver) return (Matrix[Double] residuals){
-
 	x_hat = arima_predict(weights, Z, p, q, P, Q, s, ncond, solver)
   residuals = X - x_hat
 	if (ncond > 0) residuals[1:ncond] = matrix (0, rows = ncond, cols = 1)
@@ -89,6 +88,7 @@ arima_residuals = function(Matrix[Double] weights, Matrix[Double] X, Matrix[Doub
 arima_sumofsquares = function(Matrix[Double] weights, Matrix[Double] X, Matrix[Double] Z, Integer p, Integer q, Integer P, Integer Q, Integer s, Integer ncond, String solver) return (Double sumofsquares){
 	residuals = arima_residuals(weights, X, Z, p, q, P, Q, s, ncond, solver)
   sumofsquares = sum(residuals^2)/(nrow(X) - ncond)
+	print(sumofsquares)
 }
 
 arima_css = function(Matrix[Double] weights, Matrix[Double] X, Matrix[Double] Z, Integer p, Integer q, Integer P, Integer Q, Integer s, Integer ncond, String solver) return (Double css){
@@ -240,7 +240,7 @@ X = read($X)
 
 solver = ifdef($solver, "jacobi")
 dest = ifdef($dest, "arima-css.csv")
-result_format = ifdef($result_format, "csv")
+result_format = ifdef($result_format, "text")
 
 #n on-seasonal order
 p =	ifdef($p, 0)
@@ -281,8 +281,6 @@ else{
 	stop ("Stopped because of IllegalArgument")
 }
 
-
-
 # check at least one arima order p, q, P, Q not 0
 if (p == 0 & q == 0 & P == 0 & Q == 0){
 	print ("ERROR: IllegalArgument: Calculating "+arima_string+" is not possible. At least one of the arguments p, q, P or Q must be a non-zero!")
@@ -296,8 +294,8 @@ if (p < 0 | d < 0 | q < 0 | P < 0 | D < 0 | Q < 0){
 }
 
 # check seasonality s is greater 1 is given if seasonal model is selected
-if ((P != 0 | Q != 0 | D != 0) & s < 2){
-	print ("ERROR: IllegalArgument: The seasonality s has to be at least 2 if any seasonal order is non-zero. Seasonal orders are P="+P+", D="+D+", Q="+Q+" but s="+s)
+if ((P != 0 | Q != 0 | D != 0) & s < 1){
+	print ("ERROR: IllegalArgument: The seasonality s has to be at least 1 if any seasonal order is non-zero. Seasonal orders are P="+P+", D="+D+", Q="+Q+" but s="+s)
 	stop ("Stopped because of IllegalArgument")
 }
 
@@ -339,4 +337,5 @@ Z = constructPredictorMatrix(diffX, p, q, P, Q, s, ncond)
 css = arima_css(weights, diffX, Z, p, q, P, Q, s, ncond, solver)
 
 print("arima_css = " + css)
-write(css, dest, format=result_format)
+
+write(css, dest)
