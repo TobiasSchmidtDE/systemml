@@ -30,7 +30,7 @@
 # 'D': D (seasonal differencing order)(default 0)
 # 'Q': Q (seasonal MA order)(default 0)
 # 's': s (period in terms of number of time-steps) (default 1)
-# 'solver': must be either 'forwardsub' for forward subsitution method or 'jacobi' for jacobi method (default "jacobi")
+# 'solver': must be either 'forwardsub' for forward subsitution method or 'jacobi' for jacobi method or 'inverse' for directly calculating the inverse (default "jacobi")
 # 'dest': file name to store learnt parameters (default "arima-result.csv")
 # 'result_format': the format of the destination file (default "csv")
 
@@ -93,6 +93,40 @@ arima_sumofsquares = function(Matrix[Double] weights, Matrix[Double] X, Matrix[D
 
 arima_css = function(Matrix[Double] weights, Matrix[Double] X, Matrix[Double] Z, Integer p, Integer q, Integer P, Integer Q, Integer s, Integer ncond, String solver) return (Double css){
 	css = 0.5 * log (arima_sumofsquares(weights, X, Z, p, q, P, Q, s, ncond, solver))
+}
+
+inverse_solver = function (Matrix[Double] A, Matrix[Double] b)  return (Matrix[Double] x){
+	invA = L_triangular_inv(A);
+	x = invA %*% b
+}
+
+# Inverse of lower triangular matrix
+L_triangular_inv = function(Matrix[double] L) return(Matrix[double] A) {
+  n = ncol(L)
+  if (n == 1) {
+    A = 1/L[1,1]
+  }
+  else if (n == 2) {
+    A = matrix(0, 2, 2)
+    A[1,1] = L[2,2]
+    A[2,2] = L[1,1]
+    A[2,1] = -L[2,1]
+    A = A/(as.scalar(L[1,1] * L[2,2]))
+  }
+  else {
+    k = as.integer(floor(n/2))
+
+    L11 = L[1:k,1:k]
+    L21 = L[k+1:n,1:k]
+    L22 = L[k+1:n,k+1:n]
+
+    A11 = L_triangular_inv(L11)
+    A22 = L_triangular_inv(L22)
+    A12 = matrix(0, nrow(A11), ncol(A22))
+    A21 = -A22 %*% L21 %*% A11
+
+    A = rbind(cbind(A11, A12), cbind(A21, A22))
+  }
 }
 
 jacobi_solver = function (Matrix[Double] A, Matrix[Double] b)  return (Matrix[Double] x){
@@ -299,9 +333,9 @@ if ((P != 0 | Q != 0 | D != 0) & s < 1){
 	stop ("Stopped because of IllegalArgument")
 }
 
-# check solver is jacobi|forwardsub
-if (solver != "jacobi" & solver != "forwardsub"){
-	print ("ERROR: IllegalArgument: Solver must be either 'forwardsub' for forward subsitution method or 'jacobi' for jacobi method.")
+# check solver is jacobi|forwardsub|inverse
+if (solver != "jacobi" & solver != "forwardsub" & solver != "inverse"){
+	print ("ERROR: IllegalArgument: Solver must be either 'forwardsub' for forward subsitution method, 'jacobi' for jacobi method or 'inverse' for directly calculating the inverse.")
 	stop ("Stopped because of IllegalArgument")
 }
 

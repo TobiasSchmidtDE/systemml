@@ -77,7 +77,6 @@ weights = as.matrix(readMM(weightsPath))
 
 fixedmodel = arima(data, fixed = weights, order = c(p,d,q), seasonal = list(order = c(P, D, Q), period = s), include.mean = FALSE, transform.pars = FALSE, method = c("CSS"))
 sumofsquares = fixedmodel$sigma2
-print(sumofsquares)
 css = 0.5 * log(sumofsquares)
 
 end_time <- Sys.time()

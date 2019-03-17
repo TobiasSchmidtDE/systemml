@@ -62,7 +62,8 @@ public abstract class ArimaCSSTest extends AutomatedTestBase {
 		// return Arrays.asList(new Object[][] { SAR(3, 12) });
 		return Arrays.asList(new Object[][] { AR(5), MA(7), ARMA(4, 6), ARIMA(3, 2, 3), SAR(3, 12), SMA(4, 6),
 				SARMA(2, 6, 3), SARIMA(3, 2, 4, 2, 1, 3, 12), SARIMA(1, 0, 2, 0, 1, 4, 7, "forwardsub"),
-				SARIMA(10, 3, 1, 4, 2, 4, 2, "forwardsub") });
+				SARIMA(10, 3, 1, 4, 2, 4, 2, "forwardsub"), SARIMA(0, 3, 0, 1, 0, 1, 52, "inverse"),
+				SARIMA(1, 2, 3, 4, 5, 6, 9, "inverse") });
 	}
 
 	protected static Object[] AR(int p) {
