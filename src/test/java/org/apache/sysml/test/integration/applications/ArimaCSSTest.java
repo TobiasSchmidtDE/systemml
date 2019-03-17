@@ -116,21 +116,65 @@ public abstract class ArimaCSSTest extends AutomatedTestBase {
 		if (shouldSkipTest())
 			return;
 
-		System.out.println("------------ BEGIN " + TEST_NAME + " " + scriptType + " TEST WITH {" + p + ", " + d + ", "
-				+ q + ", " + P + ", " + D + ", " + Q + ", " + s + ", " + solver + "} ------------");
 		this.scriptType = scriptType;
+
+		this.printTestInformation();
 
 		getAndLoadTestConfiguration(TEST_NAME);
 
 		generateTestData(this.timeSeriesLength, p + q + P + Q);
 
-		String x_file = input(X_NAME + ".mtx");
-		String weights_file = input(WEIGHTS_NAME + ".mtx");
+		this.fullDMLScriptName = getScript();
+		this.programArgs = this.getDMLProgramArgs();
+		this.rCmd = this.getRCmd(this.getRscriptProgramArgs());
 
+		this.runTest(true, EXCEPTION_NOT_EXPECTED, null, -1);
+		this.runRScript(true);
+
+		double tol = Math.pow(10, -8);
+		HashMap<CellIndex, Double> arima_css_SYSTEMML = this.readDMLScalarFromHDFS("learnt.model");
+		HashMap<CellIndex, Double> arima_css_R = this.readRScalarFromFS("learnt.model");
+		TestUtils.compareMatrices(arima_css_R, arima_css_SYSTEMML, tol, "arima_css_R", "arima_css_SYSTEMML");
+	}
+
+	protected void printTestInformation() {
+		System.out.println("------------ BEGIN " + TEST_NAME + " " + scriptType + " TEST WITH {" + p + ", " + d + ", "
+				+ q + ", " + P + ", " + D + ", " + Q + ", " + s + ", " + solver + "} ------------");
+	}
+
+	protected void generateTestData(int timeSeriesLength, int weightsLength) {
+		double[][] timeSeries = getRandomMatrix(timeSeriesLength, 1, 1, 5, 1, System.currentTimeMillis());
+		MatrixCharacteristics timeSeries_mc = new MatrixCharacteristics(timeSeriesLength, 1, -1, -1);
+		writeInputMatrixWithMTD(X_NAME, timeSeries, true, timeSeries_mc);
+
+		double[][] weights = getNonZeroRandomMatrix(weightsLength, 1, -2, 2, System.currentTimeMillis());
+		MatrixCharacteristics weights_mc = new MatrixCharacteristics(weightsLength, 1, 0);
+		writeInputMatrixWithMTD(WEIGHTS_NAME, weights, true, weights_mc);
+	}
+
+	protected String[] getRscriptProgramArgs() {
+		List<String> args = new ArrayList<String>();
+
+		args.add(input(X_NAME + ".mtx"));
+		args.add(input(WEIGHTS_NAME + ".mtx"));
+		args.add(expected(OUTPUT_NAME));
+		args.add(Integer.toString(p));
+		args.add(Integer.toString(d));
+		args.add(Integer.toString(q));
+		args.add(Integer.toString(P));
+		args.add(Integer.toString(D));
+		args.add(Integer.toString(Q));
+		args.add(Integer.toString(s));
+
+		return args.toArray(new String[args.size()]);
+	}
+
+	protected String[] getDMLProgramArgs() {
 		List<String> proArgs = new ArrayList<String>();
+
 		proArgs.add("-nvargs");
-		proArgs.add("X=" + x_file);
-		proArgs.add("weights_src=" + weights_file);
+		proArgs.add("X=" + input(X_NAME + ".mtx"));
+		proArgs.add("weights_src=" + input(WEIGHTS_NAME + ".mtx"));
 		proArgs.add("p=" + Integer.toString(p));
 		proArgs.add("d=" + Integer.toString(d));
 		proArgs.add("q=" + Integer.toString(q));
@@ -142,30 +186,6 @@ public abstract class ArimaCSSTest extends AutomatedTestBase {
 		proArgs.add("result_formate=MM");
 		proArgs.add("dest=" + output(OUTPUT_NAME));
 
-		programArgs = proArgs.toArray(new String[proArgs.size()]);
-		fullDMLScriptName = getScript();
-
-		rCmd = getRCmd(x_file, weights_file, expected(OUTPUT_NAME), Integer.toString(p), Integer.toString(d),
-				Integer.toString(q), Integer.toString(P), Integer.toString(D), Integer.toString(Q),
-				Integer.toString(s));
-
-		runTest(true, EXCEPTION_NOT_EXPECTED, null, -1);
-
-		runRScript(true);
-
-		double tol = Math.pow(10, -8);
-		HashMap<CellIndex, Double> arima_css_SYSTEMML = readDMLScalarFromHDFS("learnt.model");
-		HashMap<CellIndex, Double> arima_css_R = readRScalarFromFS("learnt.model");
-		TestUtils.compareMatrices(arima_css_R, arima_css_SYSTEMML, tol, "arima_css_R", "arima_css_SYSTEMML");
-	}
-
-	protected void generateTestData(int timeSeriesLength, int weightsLength) {
-		double[][] timeSeries = getRandomMatrix(timeSeriesLength, 1, 1, 5, 1, System.currentTimeMillis());
-		MatrixCharacteristics timeSeries_mc = new MatrixCharacteristics(timeSeriesLength, 1, -1, -1);
-		writeInputMatrixWithMTD(X_NAME, timeSeries, true, timeSeries_mc);
-
-		double[][] weights = getNonZeroRandomMatrix(weightsLength, 1, -2, 2, System.currentTimeMillis());
-		MatrixCharacteristics weights_mc = new MatrixCharacteristics(weightsLength, 1, 0);
-		writeInputMatrixWithMTD(WEIGHTS_NAME, weights, true, weights_mc);
+		return proArgs.toArray(new String[proArgs.size()]);
 	}
 }
